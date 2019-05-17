@@ -1,0 +1,216 @@
+<html>
+  <script>
+    var width = 640;
+    var height = 384;
+
+    var url;
+
+    var blob;
+
+    window.onload = function() {
+      var img = document.getElementById("imagePreview");
+      var canvas = document.getElementById("canvas");
+
+      img.width = width;
+      img.height = height;
+
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    function previewFile() {
+      var img = document.getElementById("imagePreview");
+      var canvas = document.getElementById("canvas");
+      var file = document.querySelector('input[type=file]').files[0];
+      var reader = new FileReader();
+
+      img.onload = function() {
+        dither();
+      }
+
+      reader.onloadend = function() {
+        img.src = reader.result;
+      }
+
+      if (file) {
+        reader.readAsDataURL(file);
+      } else {
+        img.src = "";
+      }
+    }
+
+    function updateCanvas() {
+      var img = document.getElementById("imagePreview");
+      var canvas = document.getElementById("canvas");
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      //dither();
+    }
+
+    function toGreyScale() {
+      var img = document.getElementById("imagePreview");
+      var canvas = document.getElementById("canvas");
+      var ctx = canvas.getContext("2d");
+
+      var canvasData = ctx.getImageData(0, 0, width, height);
+      var data = canvasData.data;
+
+      for (var i = 0; i < data.length; i += 4) {
+
+        var avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+
+        data[i] = avg;
+        data[i + 1] = avg;
+        data[i + 2] = avg;
+      }
+
+      ctx.putImageData(canvasData, 0, 0);
+    }
+
+    function clamp(val, min, max) {
+      return Math.max(min, Math.min(val, max));
+    }
+
+    function toByte(arr) {
+      var out;
+      for (var i = 0; i < 8; i++) {
+        out = out | (arr[i] << (7 - i));
+      }
+      return out;
+    }
+
+    function dither() {
+      var ditherAlg = [ // [x, y, bit shift]
+        [1, 0, 2],
+        [-1, 1, 4],
+        [0, 1, 4]
+      ];
+
+      var link = document.getElementById("link");
+      var img = document.getElementById("imagePreview");
+      var canvas = document.getElementById("canvas");
+      var ctx = canvas.getContext("2d");
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      var canvasData = ctx.getImageData(0, 0, width, height);
+      var data = canvasData.data;
+
+      var matrix = [];
+
+      // copy pixel brightnesses to matrix
+      for (var i = 0; i < data.length; i += 4) {
+
+        var avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+
+        matrix.push(avg);
+      }
+
+      var len = matrix.length;
+
+      console.log(len);
+
+      // dither matrix
+      matrix.forEach(function(pix, i, arr) {
+
+        var out = pix > 127 ? 255 : 0;
+
+        var err = pix - out;
+
+        // propagate error
+        ditherAlg.forEach(function(prop) {
+          var index = clamp(i + prop[0] + prop[1] * width, 0, len - 1);
+
+          arr[index] += err / prop[2];
+        });
+
+        // set pixel
+        arr[i] = out;
+      });
+
+      console.log(matrix.length);
+
+      var byte = [];
+      var buf = new Uint8Array(len >>> 3);
+
+      // copy matrix to canvas
+      for (var i = 0; i < data.length; i += 4) {
+        var mi = i >>> 2;
+
+        var val = matrix[mi];
+
+        byte.push(val > 128 ? 1 : 0);
+
+        if (byte.length == 8) {
+          buf[mi >>> 3] = toByte(byte);
+
+          byte = [];
+        }
+
+        data[i] = val;
+        data[i + 1] = val;
+        data[i + 2] = val;
+        data[i + 3] = 255;
+      }
+
+      blob = new Blob([buf.buffer], {
+        type: "application/octet-stream"
+      });
+
+      url = URL.createObjectURL(blob);
+
+      link.href = url;
+      link.download = "picture.bin";
+      link.style.display = "block";
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.putImageData(canvasData, 0, 0);
+    }
+
+    function updateFrame() {
+      /*var form = document.createElement("FORM");
+      
+      var file = document.createElement("INPUT");
+      
+      file.type = "file";
+      file.name = "name";
+      file.id		= "binary";
+      //file.value = url;
+      
+      form.method = "post";
+      form.enctype = "multipart/form-data";
+      
+      form.appendChild(file);
+      
+      document.body.appendChild(form);*/
+
+      form = new FormData();
+
+      form.append("name", blob, "out.bin");
+
+      //console.log(form.get("picture"));
+
+      var request = new XMLHttpRequest();
+      request.open("POST", "/upload");
+      request.send(form);
+
+      //form.submit();
+    }
+
+  </script>
+
+  <head>
+    <input type="file" onchange="previewFile()"><br>
+    <img id="imagePreview" alt="Image preview">
+    <canvas id="canvas" style="border:1px solid #d3d3d3;">
+    Your browser does not support the canvas tag.
+    </canvas><br>
+    <button onclick="updateFrame()">
+    Update Frame
+    </button>
+    <a id="link" href="#" style="display:none;">Download Image</a>
+  </head>
+
+</html>
