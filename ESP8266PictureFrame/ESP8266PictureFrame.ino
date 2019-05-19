@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include "TestPic.h"
+//#include "TestPic.h"
 
 #include <GxEPD.h>
 #include <GxGDEW075T8/GxGDEW075T8.h>      // 7.5" b/w
